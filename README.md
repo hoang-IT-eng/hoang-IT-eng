@@ -1,4 +1,4 @@
-<img src="assets/profile/hero.svg" width="100%" alt="A terminal styled like a coding agent CLI. A warp through ASCII stars, then a welcome panel for Tran Huy Hoang, Ho Chi Minh City, Vietnam, with a spinning ASCII torus knot. About: full-stack and applied-AI engineer, from WebGL choreography to DB locks and CV. Stack: TypeScript, React, NestJS, .NET, Python.">
+<img src="assets/profile/hero.svg" width="100%" alt="A terminal styled like a coding agent CLI. A warp through ASCII stars, then a welcome panel for Tran Huy Hoang, Ho Chi Minh City, Vietnam, with an animated ASCII portrait. About: full-stack and applied-AI engineer, from WebGL choreography to DB locks and CV. Stack: TypeScript, React, NestJS, .NET, Python.">
 
 <p align="center"><a href="https://hoang-folio.pages.dev">hoang-folio.pages.dev</a> &nbsp;·&nbsp; <a href="https://hoang-dev-portfolio.netlify.app">3D Portfolio</a> &nbsp;·&nbsp; <a href="https://x.com/leontran_o">@leontran_o</a> &nbsp;·&nbsp; <a href="mailto:tranhuyhoangstu@gmail.com">tranhuyhoangstu@gmail.com</a></p>
 
