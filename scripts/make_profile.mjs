@@ -72,87 +72,77 @@ function clock(T) {
 
 /* ------------------------------------------------------------------ hero */
 
-const ART = { cols: 40, rows: 18, size: 9.6, frames: 60, loop: 5 };
-const RAMP = '.,-~:;=!*#$@';
+const ART = { cols: 52, rows: 27, size: 5.9, frames: 16, loop: 4.5 };
+const RAMP = ' .,:;-~=+*#%@';
 
-function knotFrames() {
+async function faceFrames() {
   const { cols, rows, frames } = ART;
-  const aspect = 0.6;
-  const p = 2, q = 3, tube = 0.42, K2 = 7.2, K1 = 15.4;
-  const curve = (t) => {
-    const r = Math.cos(q * t) + 2.1;
-    return [r * Math.cos(p * t), r * Math.sin(p * t), -Math.sin(q * t) * 1.15];
-  };
-  const sub = (a, b) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
-  const norm = (v) => {
-    const l = Math.hypot(...v);
-    return [v[0] / l, v[1] / l, v[2] / l];
-  };
-  const cross = (a, b) => [
-    a[1] * b[2] - a[2] * b[1],
-    a[2] * b[0] - a[0] * b[2],
-    a[0] * b[1] - a[1] * b[0],
-  ];
+  const facePath = path.join(HERE, 'face.png');
+  const meta = await sharp(facePath).metadata();
+  const topCrop = Math.round(meta.height * 0.12);
+  const cropH = Math.round(meta.height * 0.84);
+  // 52 * 0.6 = 31.2 vs 27 rows (~1.16:1) matches 400 x 336 (~1.19:1) with zero distortion
+  const { data } = await sharp(facePath)
+    .extract({ left: 0, top: topCrop, width: meta.width, height: cropH })
+    .grayscale()
+    .normalize({ lower: 3, upper: 99 })
+    .resize(cols, rows, { fit: 'fill', kernel: 'lanczos3' })
+    .raw()
+    .toBuffer({ resolveWithObject: true });
 
-  const pts = [];
-  const U = 1500, V = 44, e = 1e-3;
-  for (let i = 0; i < U; i++) {
-    const t = (i / U) * Math.PI * 2;
-    const c = curve(t);
-    const T = norm(sub(curve(t + e), curve(t - e)));
-    const T2 = norm(sub(curve(t + 2 * e), c));
-    const N = norm(sub(T2, T));
-    const B = cross(T, N);
-    for (let j = 0; j < V; j++) {
-      const a = (j / V) * Math.PI * 2;
-      const n = [
-        N[0] * Math.cos(a) + B[0] * Math.sin(a),
-        N[1] * Math.cos(a) + B[1] * Math.sin(a),
-        N[2] * Math.cos(a) + B[2] * Math.sin(a),
-      ];
-      pts.push([c[0] + tube * n[0], c[1] + tube * n[1], c[2] + tube * n[2], ...n]);
+  const base = new Float32Array(cols * rows);
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      const k = r * cols + c;
+      let v = data[k] / 255;
+      // Keep deep dark hair/pupils near zero while lifting facial skin & eye catchlights
+      v = Math.max(0, (v - 0.12) / 0.88);
+      v = Math.pow(v, 0.78);
+      // Wide elliptical vignette so both eyes stay 100% bright while outer corners melt cleanly
+      const nx = (c - (cols - 1) / 2) / (cols * 0.6);
+      const ny = (r - (rows - 1) / 2) / (rows * 0.56);
+      const dist = Math.hypot(nx, ny);
+      const vig = dist < 0.78 ? 1 : Math.max(0, 1 - Math.pow((dist - 0.78) / 0.28, 1.5));
+      base[k] = v * vig;
     }
   }
 
-  const light = norm([-0.4, 0.8, -1]);
   const out = [];
   for (let f = 0; f < frames; f++) {
-    const A = (f / frames) * Math.PI * 2;
-    const spin = A / 3;
-    const tilt = 0.62 + 0.28 * Math.sin(A);
-    const yaw = 0.38 * Math.sin(A + 1.2);
-    const cs = Math.cos(spin), ss = Math.sin(spin);
-    const ct = Math.cos(tilt), st = Math.sin(tilt);
-    const cy = Math.cos(yaw), sy = Math.sin(yaw);
-    const rot = (x, y, z) => {
-      const x1 = x * cs - y * ss, y1 = x * ss + y * cs;
-      const y2 = y1 * ct - z * st, z2 = y1 * st + z * ct;
-      return [x1 * cy + z2 * sy, y2, -x1 * sy + z2 * cy];
-    };
-    const zbuf = new Float32Array(cols * rows);
-    const chars = new Array(cols * rows).fill(' ');
-    for (const [x, y, z, nx, ny, nz] of pts) {
-      const [X, Y, Z] = rot(x, y, z);
-      const ooz = 1 / (Z + K2);
-      const col = Math.round(cols / 2 + (K1 * X * ooz) / aspect);
-      const row = Math.round(rows / 2 - K1 * Y * ooz);
-      if (col < 0 || col >= cols || row < 0 || row >= rows) continue;
-      const k = row * cols + col;
-      if (ooz <= zbuf[k]) continue;
-      zbuf[k] = ooz;
-      const [NX, NY, NZ] = rot(nx, ny, nz);
-      const lum = NX * light[0] + NY * light[1] + NZ * light[2];
-      chars[k] = RAMP[Math.min(RAMP.length - 1, Math.floor(((lum + 1) / 2) ** 1.6 * RAMP.length))];
-    }
+    const phase = (f / frames) * Math.PI * 2;
+    const sweep = -0.3 + (f / frames) * 1.6;
     const lines = [];
-    for (let r = 0; r < rows; r++) lines.push(chars.slice(r * cols, (r + 1) * cols).join(''));
+    for (let r = 0; r < rows; r++) {
+      let line = '';
+      for (let c = 0; c < cols; c++) {
+        const k = r * cols + c;
+        let v = base[k];
+        if (v < 0.05) {
+          line += ' ';
+          continue;
+        }
+        const diag = (c / cols) * 0.72 + (r / rows) * 0.28;
+        const glow = Math.exp(-Math.pow((diag - sweep) / 0.14, 2)) * 0.14;
+        const breath = Math.sin(phase) * 0.02;
+        v = Math.min(1, Math.max(0, v + glow * (0.25 + v * 0.75) + breath * v));
+        const idx = Math.min(RAMP.length - 1, Math.max(1, Math.round(v * (RAMP.length - 1))));
+        line += RAMP[idx];
+      }
+      lines.push(line);
+    }
     out.push(lines);
   }
   return out;
 }
 
 const esc = (s) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-const tone = (ch) => ('.,-~'.includes(ch) ? 'd' : ':;=!'.includes(ch) ? 'm' : 'h');
+const tone = (ch) => {
+  if ('.,'.includes(ch)) return 't0';
+  if (':;-'.includes(ch)) return 't1';
+  if ('~=+'.includes(ch)) return 't2';
+  if ('*#'.includes(ch)) return 't3';
+  return 't4';
+};
 
 function frameText(lines, cls, style) {
   const { size } = ART;
@@ -173,12 +163,12 @@ function frameText(lines, cls, style) {
       buf += ch;
     }
     if (buf) runs += `<tspan class="${cur}">${esc(buf)}</tspan>`;
-    body += `<tspan x="${(lead * adv).toFixed(1)}" y="${((r + 1) * size - 2).toFixed(1)}">${runs}</tspan>`;
+    body += `<tspan x="${(lead * adv).toFixed(1)}" y="${((r + 1) * size - 1).toFixed(1)}">${runs}</tspan>`;
   });
   return `<text class="${cls}"${style ? ` style="${style}"` : ''}>${body}</text>`;
 }
 
-function hero() {
+async function hero() {
   const W = 846, H = 378, L = 5, R = 841, TOP = 30;
   const c = clock(5);
   const C = { screen: '#0c0c0c', bar: '#161616', ink: '#ededed', soft: '#a1a1a1', dim: '#6b6b6b', line: '#3a3a3a' };
@@ -196,21 +186,21 @@ function hero() {
   const t = (x, y, s, fill, size = 13, extra = '') =>
     `<text x="${x}" y="${y}" font-size="${size}" fill="${fill}"${extra}>${esc(s)}</text>`;
 
-  // Spinning 3D ASCII torus knot
-  const frames = knotFrames();
+  // Animated ASCII face portrait
+  const frames = await faceFrames();
   const dt = ART.loop / ART.frames;
   const art = frames
     .map((lines, i) => frameText(lines, i ? 'f' : 'f f0', `animation-delay:${(-(ART.loop - i * dt)).toFixed(3)}s`))
     .join('');
   const artW = ART.cols * ART.size * 0.6, artH = ART.rows * ART.size;
-  const small = 1, big = 1.8, cx = W / 2, cy = (H + 8) / 2;
+  const small = 1, big = 1.75, cx = W / 2, cy = (H + 8) / 2;
   const slotX = BOX.x + (DIV - BOX.x) / 2 - (artW * small) / 2;
-  const slotY = BOX.y + 40;
+  const slotY = BOX.y + 44;
   const at = (x, y, s) => `translate(${x.toFixed(1)}px,${y.toFixed(1)}px) scale(${s})`;
   const centre = at(cx - (artW * big) / 2, cy - (artH * big) / 2, big);
   const deep = at(cx - (artW * 0.04) / 2, cy - (artH * 0.04) / 2, 0.04);
   const land = at(slotX, slotY, small);
-  const knot = c.anim(
+  const portrait = c.anim(
     [
       [0.45, { o: 0, t: deep }, 'cubic-bezier(.16,1,.3,1)'],
       [1.7, { o: 1, t: centre }],
@@ -304,7 +294,7 @@ ${t(BOX.x + 44, PY + 24, 'Try "match my JD against 8 shipped systems"', C.dim, 1
 @font-face{font-family:GM;font-weight:500;src:url(data:font/woff2;base64,${mono(500)}) format('woff2')}
 @font-face{font-family:GM;font-weight:700;src:url(data:font/woff2;base64,${mono(700)}) format('woff2')}
 text{font-family:GM,ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-weight:500;white-space:pre}
-.d{fill:#4d4d4d}.m{fill:#9b9b9b}.h{fill:#f4f4f4}
+.t0{fill:#3a3a3a}.t1{fill:#6a6a6a}.t2{fill:#a4a4a4}.t3{fill:#dcdcdc}.t4{fill:#ffffff}
 .f{font-size:${ART.size}px;opacity:0;animation:fr ${ART.loop}s step-end infinite}.f0{opacity:1}
 @keyframes fr{0%{opacity:1}${(100 / ART.frames).toFixed(3)}%{opacity:0}100%{opacity:0}}
 .dr{stroke-dasharray:1;animation:dr .8s cubic-bezier(.65,0,.35,1) 3.05s both}@keyframes dr{from{stroke-dashoffset:1}to{stroke-dashoffset:0}}
@@ -312,7 +302,7 @@ text{font-family:GM,ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-we
 ${starCss}${c.css()}
 @media (prefers-reduced-motion:reduce){*{animation:none!important}.intro{display:none}}`;
 
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" role="img" aria-label="A terminal styled like a coding agent CLI. Welcome panel for Tran Huy Hoang, Ho Chi Minh City, Vietnam, with a spinning ASCII torus knot. About: full-stack and applied-AI engineer. Stack: TypeScript, React, NestJS, .NET, Python.">
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" role="img" aria-label="A terminal styled like a coding agent CLI. Welcome panel for Tran Huy Hoang, Ho Chi Minh City, Vietnam, with an animated ASCII portrait. About: full-stack and applied-AI engineer. Stack: TypeScript, React, NestJS, .NET, Python.">
 <title>Tran Huy Hoang</title>
 <defs><clipPath id="win"><rect x="${L}" y="0" width="${R - L}" height="${H - 4}" rx="12"/></clipPath></defs>
 <style>${css.replace(/\n/g, '')}</style>
@@ -320,7 +310,7 @@ ${starCss}${c.css()}
 <g clip-path="url(#win)">
 <g class="intro ${warp}">${stars}</g>
 ${panel}
-<g class="${knot}" style="transform:${land};transform-origin:0 0">${art}</g>
+<g class="${portrait}" style="transform:${land};transform-origin:0 0">${art}</g>
 ${titlebar}${left}${right}${prompt}
 </g>
 </svg>`;
@@ -401,7 +391,7 @@ const write = (name, svg) => {
   console.log(name.padEnd(24), `${(Buffer.byteLength(clean) / 1024).toFixed(0)} KB`);
 };
 
-write('hero.svg', hero());
+write('hero.svg', await hero());
 
 const BIG = { w: 423, h: 192, plate: 58, big: true };
 const SMALL = { w: 211, h: 140, plate: 54, big: false };
