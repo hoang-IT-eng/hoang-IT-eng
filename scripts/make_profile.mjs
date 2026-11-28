@@ -391,7 +391,7 @@ const write = (name, svg) => {
   console.log(name.padEnd(24), `${(Buffer.byteLength(clean) / 1024).toFixed(0)} KB`);
 };
 
-write('hero.svg', await hero());
+write('hero-portrait.svg', await hero());
 
 const BIG = { w: 423, h: 192, plate: 58, big: true };
 const SMALL = { w: 211, h: 140, plate: 54, big: false };
